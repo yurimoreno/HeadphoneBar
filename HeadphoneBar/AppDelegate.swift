@@ -235,7 +235,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let isConnected = isAnyDeviceConnected()
         let symbolName = isConnected ? "headphones" : "headphones.slash"
 
-        // Use SF Symbols as template image — most reliable menu bar approach
         if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: symbolName) {
             button.image = image
             button.image?.isTemplate = true
