@@ -4,7 +4,7 @@ import IOBluetooth
 // MARK: - App Info
 
 let kAppName = "HeadphoneBar"
-let kAppVersion = "1.0.0"
+let kAppVersion = "1.0.1"
 
 // MARK: - Models
 
@@ -76,14 +76,16 @@ class BluetoothManager: NSObject {
 
         let result = ioDevice.openConnection()
 
-        if result == kIOReturnSuccess {
-            connectedDevices.insert(device.address)
-            onDeviceConnected?()
-            NotificationCenter.default.post(name: .deviceConnected, object: nil, userInfo: ["device": device])
-            completion?(true, nil)
-        } else {
-            let errorMsg = "Connection failed with error: \(result)"
-            completion?(false, errorMsg)
+        DispatchQueue.main.async {
+            if result == kIOReturnSuccess {
+                self.connectedDevices.insert(device.address)
+                self.onDeviceConnected?()
+                NotificationCenter.default.post(name: .deviceConnected, object: nil, userInfo: ["device": device])
+                completion?(true, nil)
+            } else {
+                let errorMsg = "Connection failed with error: \(result)"
+                completion?(false, errorMsg)
+            }
         }
     }
 
@@ -97,13 +99,15 @@ class BluetoothManager: NSObject {
 
         let result = ioDevice.closeConnection()
 
-        if result == kIOReturnSuccess {
-            connectedDevices.remove(device.address)
-            onDeviceDisconnected?()
-            NotificationCenter.default.post(name: .deviceDisconnected, object: nil, userInfo: ["device": device])
-            completion?(true)
-        } else {
-            completion?(false)
+        DispatchQueue.main.async {
+            if result == kIOReturnSuccess {
+                self.connectedDevices.remove(device.address)
+                self.onDeviceDisconnected?()
+                NotificationCenter.default.post(name: .deviceDisconnected, object: nil, userInfo: ["device": device])
+                completion?(true)
+            } else {
+                completion?(false)
+            }
         }
     }
 
@@ -229,22 +233,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
 
         let isConnected = isAnyDeviceConnected()
-        let emoji = isConnected ? "🔊" : "🎧"
+        let symbolName = isConnected ? "headphones" : "headphones.slash"
 
-        // Draw emoji into an NSImage using NSAttributedString — reliable across all macOS versions
-        let fontSize: CGFloat = 16
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize)
-        ]
-        let attributedString = NSAttributedString(string: emoji, attributes: attributes)
-
-        let size = NSSize(width: fontSize + 4, height: fontSize + 4)
-        let image = NSImage(size: size, flipped: false) { rect in
-            attributedString.draw(in: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
-            return true
+        // Use SF Symbols as template image — most reliable menu bar approach
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: symbolName) {
+            button.image = image
+            button.image?.isTemplate = true
         }
-
-        button.image = image
     }
 
     func isAnyDeviceConnected() -> Bool {
@@ -381,19 +376,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
 
-        // Use emoji as icon — reliable across macOS versions
-        let iconEmoji = "🎧"
-        let iconFontSize: CGFloat = 48
-        let iconAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: iconFontSize)
-        ]
-        let iconAttrString = NSAttributedString(string: iconEmoji, attributes: iconAttributes)
-        let iconSize = NSSize(width: iconFontSize + 4, height: iconFontSize + 4)
-        let iconImage = NSImage(size: iconSize, flipped: false) { rect in
-            iconAttrString.draw(in: NSRect(x: 2, y: 2, width: iconSize.width - 4, height: iconSize.height - 4))
-            return true
+        // Use SF Symbol as alert icon
+        if let iconImage = NSImage(systemSymbolName: "headphones", accessibilityDescription: "Headphones") {
+            alert.icon = iconImage
         }
-        alert.icon = iconImage
 
         alert.runModal()
     }
