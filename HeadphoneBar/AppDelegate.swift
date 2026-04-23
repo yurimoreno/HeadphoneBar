@@ -1,6 +1,11 @@
 import AppKit
 import IOBluetooth
 
+// MARK: - App Info
+
+let kAppName = "HeadphoneBar"
+let kAppVersion = "1.0.0"
+
 // MARK: - Models
 
 struct SavedDevice: Codable, Equatable {
@@ -29,7 +34,6 @@ class BluetoothManager: NSObject {
     var onDeviceDisconnected: (() -> Void)?
 
     private var connectedDevices: Set<String> = []
-    private var connectionCallbacks: [String: () -> Void] = [:]
 
     // MARK: - Get Paired Audio Devices
 
@@ -39,18 +43,13 @@ class BluetoothManager: NSObject {
         }
 
         return devices.filter { device in
-            // Filter for audio-related device classes
-            // Major Class 4 = Audio/Video
-            // Minor classes: 0x01 Headphones, 0x02 Hands-free, 0x04 Loudspeaker, 0x06 Microphone
             let classOfDevice = device.classOfDevice
             let majorClass = (classOfDevice >> 8) & 0x1F
-            let minorClass = (classOfDevice >> 2) & 0x3F
 
             if majorClass == 4 { // Audio/Video
                 return true
             }
 
-            // Also include devices with "audio" or "headphone" etc in name as fallback
             if let name = device.name?.lowercased() {
                 let audioKeywords = ["airpods", "headphone", "headset", "speaker", "beats", "buds", "audio", "podcast"]
                 return audioKeywords.contains { name.contains($0) }
@@ -68,7 +67,6 @@ class BluetoothManager: NSObject {
             return
         }
 
-        // Check if already connected
         if ioDevice.isConnected() {
             disconnect(from: device) { success in
                 completion?(success, nil)
@@ -76,7 +74,6 @@ class BluetoothManager: NSObject {
             return
         }
 
-        // Attempt connection
         let result = ioDevice.openConnection()
 
         if result == kIOReturnSuccess {
@@ -176,12 +173,6 @@ class DeviceManager {
             UserDefaults.standard.removeObject(forKey: selectedDeviceKey)
         }
     }
-
-    // Add a device to the saved list if not already there
-    func ensureDeviceSaved(_ device: IOBluetoothDevice) {
-        guard let saved = SavedDevice(device: device) else { return }
-        addDevice(saved)
-    }
 }
 
 // MARK: - Notifications
@@ -196,9 +187,6 @@ extension Notification.Name {
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     var statusItem: NSStatusItem!
-    var popover: NSPopover?
-
-    // Device selection window
     var deviceSelectionWindow: NSWindow?
 
     // MARK: - App Lifecycle
@@ -207,15 +195,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupNotifications()
 
-        // Check if first launch (no saved devices)
         if DeviceManager.shared.getSavedDevices().isEmpty {
-            // Show device selection immediately
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self.showDeviceSelection()
             }
         }
 
-        // Auto-connect to last selected device
         if let lastDevice = DeviceManager.shared.getSelectedDevice() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 BluetoothManager.shared.connect(to: lastDevice) { _, _ in
@@ -238,20 +223,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Status Bar Icon
+
     func updateStatusItemIcon() {
         guard let button = statusItem.button else { return }
 
         let isConnected = isAnyDeviceConnected()
-
-        // SF Symbols: headphones when connected, headphones.slash when disconnected
         let symbolName = isConnected ? "headphones" : "headphones.slash"
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
-        if let symbolImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: symbolName)?
-            .withSymbolConfiguration(config) {
-            button.image = symbolImage
-            button.image?.isTemplate = false
+        // Draw SF Symbol into a properly-sized image
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        guard let symbolImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: symbolName)?
+            .withSymbolConfiguration(symbolConfig) else { return }
+
+        // Get the natural size of the symbol
+        let imageSize = symbolImage.size
+        let aspectRatio = imageSize.width / imageSize.height
+        let targetHeight: CGFloat = 18
+        let targetWidth = targetHeight * aspectRatio
+
+        // Create a properly-sized image
+        let finalSize = NSSize(width: targetWidth, height: targetHeight)
+        let finalImage = NSImage(size: finalSize, flipped: false) { rect in
+            symbolImage.draw(in: rect)
+            return true
         }
+
+        button.image = finalImage
     }
 
     func isAnyDeviceConnected() -> Bool {
@@ -272,31 +270,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if event.type == .rightMouseUp {
             showContextMenu()
         } else {
-            // Left click: toggle connection of primary device
             togglePrimaryDevice()
         }
     }
 
     func togglePrimaryDevice() {
         if let device = connectedDevice() {
-            // Disconnect if connected
             BluetoothManager.shared.disconnect(from: device) { [weak self] _ in
                 DispatchQueue.main.async {
                     self?.updateStatusItemIcon()
                 }
             }
         } else if let deviceToConnect = DeviceManager.shared.getSelectedDevice() {
-            // Connect to selected device
             BluetoothManager.shared.connect(to: deviceToConnect) { [weak self] success, error in
                 DispatchQueue.main.async {
                     self?.updateStatusItemIcon()
                     if !success {
-                        self?.showNotification(title: "Connection Failed", body: error ?? "Could not connect to \(deviceToConnect.name)")
+                        self?.showAlert(title: "Connection Failed", message: error ?? "Could not connect to \(deviceToConnect.name)")
                     }
                 }
             }
         } else {
-            // No device selected, show selection
             showDeviceSelection()
         }
     }
@@ -314,7 +308,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             noDevicesItem.isEnabled = false
             menu.addItem(noDevicesItem)
         } else {
-            // Add devices
             for device in devices {
                 let item = NSMenuItem(title: device.name, action: #selector(connectToDevice(_:)), keyEquivalent: "")
                 item.target = self
@@ -338,6 +331,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // About
+        let aboutItem = NSMenuItem(title: "About HeadphoneBar", action: #selector(showAbout), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         // Quit
         let quitItem = NSMenuItem(title: "Quit HeadphoneBar", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
@@ -351,10 +351,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func connectToDevice(_ sender: NSMenuItem) {
         guard let device = sender.representedObject as? SavedDevice else { return }
 
-        // Update selected device
         DeviceManager.shared.setSelectedDevice(device)
 
-        // Toggle connection
         if BluetoothManager.shared.isConnected(address: device.address) {
             BluetoothManager.shared.disconnect(from: device) { [weak self] _ in
                 DispatchQueue.main.async {
@@ -368,6 +366,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    // MARK: - About Panel
+
+    @objc func showAbout() {
+        let alert = NSAlert()
+        alert.messageText = "HeadphoneBar"
+        alert.informativeText = """
+        Version: \(kAppVersion)
+
+        One-click Bluetooth headphone connection for macOS.
+
+        Left-click: Connect/disconnect your headphones
+        Right-click: Device list and options
+
+        Built with native IOBluetooth framework.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+
+        if let iconImage = NSImage(systemSymbolName: "headphones", accessibilityDescription: "Headphones") {
+            let iconConfig = NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)
+            let sizedIcon = iconImage.withSymbolConfiguration(iconConfig)
+            alert.icon = sizedIcon
+        }
+
+        alert.runModal()
     }
 
     // MARK: - Device Selection Window
@@ -431,11 +456,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func showNotification(title: String, body: String) {
-        let notification = NSUserNotification()
-        notification.title = title
-        notification.informativeText = body
-        NSUserNotificationCenter.default.deliver(notification)
+    // MARK: - Alert Helper
+
+    func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc func quitApp() {
@@ -473,13 +502,11 @@ class DeviceSelectionViewController: NSViewController, NSTableViewDelegate, NSTa
     }
 
     func setupUI() {
-        // Title label
         let titleLabel = NSTextField(labelWithString: "Select devices to show in menu bar:")
         titleLabel.frame = NSRect(x: 20, y: 260, width: 360, height: 20)
         titleLabel.font = NSFont.boldSystemFont(ofSize: 13)
         view.addSubview(titleLabel)
 
-        // Table view
         scrollView = NSScrollView(frame: NSRect(x: 20, y: 60, width: 360, height: 190))
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .bezelBorder
@@ -502,7 +529,6 @@ class DeviceSelectionViewController: NSViewController, NSTableViewDelegate, NSTa
         scrollView.documentView = tableView
         view.addSubview(scrollView)
 
-        // Pre-select saved devices
         for (index, device) in pairedDevices.enumerated() {
             if let saved = SavedDevice(device: device),
                savedDevices.contains(saved) {
@@ -510,7 +536,6 @@ class DeviceSelectionViewController: NSViewController, NSTableViewDelegate, NSTa
             }
         }
 
-        // Buttons
         let buttonY: CGFloat = 20
 
         cancelButton = NSButton(frame: NSRect(x: 200, y: buttonY, width: 80, height: 30))
@@ -580,7 +605,6 @@ class DeviceSelectionViewController: NSViewController, NSTableViewDelegate, NSTa
     }
 
     @objc func saveClicked() {
-        // Set the first selected device as the primary
         let selectedRows = tableView.selectedRowIndexes
         if let firstSelected = selectedRows.first,
            firstSelected < pairedDevices.count,
