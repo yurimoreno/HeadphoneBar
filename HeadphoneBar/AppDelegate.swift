@@ -242,21 +242,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
 
         let isConnected = isAnyDeviceConnected()
+        let symbol = isConnected ? "🔊" : "🎧"
 
-        // Use SF Symbols if available, fallback to system image
-        if #available(macOS 11.0, *) {
-            let symbolName = isConnected ? "headphones" : "headphones"
-            let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        // Create an image from the emoji using an attributed string
+        let fontSize: CGFloat = 15
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize)
+        ]
+        let attributedString = NSAttributedString(string: symbol, attributes: attributes)
 
-            if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Headphones") {
-                let configured = image.withSymbolConfiguration(config)
-                button.image = configured
-                button.image?.isTemplate = true
-            }
-        } else {
-            // Fallback: use a simple text icon
-            button.title = isConnected ? "🎧" : "🎧"
+        let size = NSSize(width: fontSize + 4, height: fontSize + 4)
+        let image = NSImage(size: size, flipped: false) { rect in
+            attributedString.draw(in: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
+            return true
         }
+
+        button.image = image
+        button.image?.isTemplate = false
     }
 
     func isAnyDeviceConnected() -> Bool {
