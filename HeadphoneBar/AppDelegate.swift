@@ -229,27 +229,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
 
         let isConnected = isAnyDeviceConnected()
-        let symbolName = isConnected ? "headphones" : "headphones.slash"
+        let emoji = isConnected ? "🔊" : "🎧"
 
-        // Draw SF Symbol into a properly-sized image
-        let symbolConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        guard let symbolImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: symbolName)?
-            .withSymbolConfiguration(symbolConfig) else { return }
+        // Draw emoji into an NSImage using NSAttributedString — reliable across all macOS versions
+        let fontSize: CGFloat = 16
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize)
+        ]
+        let attributedString = NSAttributedString(string: emoji, attributes: attributes)
 
-        // Get the natural size of the symbol
-        let imageSize = symbolImage.size
-        let aspectRatio = imageSize.width / imageSize.height
-        let targetHeight: CGFloat = 18
-        let targetWidth = targetHeight * aspectRatio
-
-        // Create a properly-sized image
-        let finalSize = NSSize(width: targetWidth, height: targetHeight)
-        let finalImage = NSImage(size: finalSize, flipped: false) { rect in
-            symbolImage.draw(in: rect)
+        let size = NSSize(width: fontSize + 4, height: fontSize + 4)
+        let image = NSImage(size: size, flipped: false) { rect in
+            attributedString.draw(in: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
             return true
         }
 
-        button.image = finalImage
+        button.image = image
     }
 
     func isAnyDeviceConnected() -> Bool {
@@ -386,11 +381,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
 
-        if let iconImage = NSImage(systemSymbolName: "headphones", accessibilityDescription: "Headphones") {
-            let iconConfig = NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)
-            let sizedIcon = iconImage.withSymbolConfiguration(iconConfig)
-            alert.icon = sizedIcon
+        // Use emoji as icon — reliable across macOS versions
+        let iconEmoji = "🎧"
+        let iconFontSize: CGFloat = 48
+        let iconAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: iconFontSize)
+        ]
+        let iconAttrString = NSAttributedString(string: iconEmoji, attributes: iconAttributes)
+        let iconSize = NSSize(width: iconFontSize + 4, height: iconFontSize + 4)
+        let iconImage = NSImage(size: iconSize, flipped: false) { rect in
+            iconAttrString.draw(in: NSRect(x: 2, y: 2, width: iconSize.width - 4, height: iconSize.height - 4))
+            return true
         }
+        alert.icon = iconImage
 
         alert.runModal()
     }
@@ -469,6 +472,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
     }
 }
 
