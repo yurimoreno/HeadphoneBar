@@ -4,7 +4,7 @@ import IOBluetooth
 // MARK: - App Info
 
 let kAppName = "HeadphoneBar"
-let kAppVersion = "1.0.1"
+let kAppVersion = "1.0.2"
 
 // MARK: - Models
 
