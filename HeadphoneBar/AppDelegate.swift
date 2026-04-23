@@ -550,8 +550,11 @@ class DeviceSelectionViewController: NSViewController, NSTableViewDelegate, NSTa
         } else if tableColumn?.identifier.rawValue == "saved" {
             let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(checkChanged(_:)))
             check.tag = row
-            let saved = SavedDevice(device: device)
-            check.state = savedDevices.contains(saved) ? .on : .off
+            if let saved = SavedDevice(device: device) {
+                check.state = savedDevices.contains(saved) ? .on : .off
+            } else {
+                check.state = .off
+            }
             return check
         }
 
